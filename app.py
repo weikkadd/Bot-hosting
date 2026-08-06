@@ -6,7 +6,7 @@ import urllib.request, urllib.parse, urllib.error
 from datetime import datetime
 from seleniumbase import SB
 
-# 环境变量配置(可以直接私库在双引号里填写)
+# 环境变量配置 (可以直接私库在双引号里填写)
 EMAIL         = os.environ.get("EMAIL") or ""           # 邮箱,只用于通知使用，可随意填写
 SESSION_TOKEN = os.environ.get("SESSION_TOKEN") or ""   # session token，默认登录方式,非必须
 DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN") or ""   # Discord Token 备用登录方式, 失败时才使用,必须填写
@@ -27,7 +27,7 @@ if not SESSION_TOKEN and not DC_TOKEN:
 # 记录本次登录方式（用于通知）
 _LOGIN_METHOD = "SESSION_TOKEN"
 
-# 获取cookie到期时间
+# 获取 cookie 到期时间
 def get_cookie_info(sb, name):
     cookies = sb.get_cookies()
     for c in cookies:
@@ -38,7 +38,7 @@ def get_cookie_info(sb, name):
             return value, expiry_dt
     return None, None
 
-# 检查是否需要更新cookie
+# 检查是否需要更新 cookie
 def should_update_cookie(new_value, old_value, expiry_dt, days_threshold=3):
     if new_value is None:
         return False
@@ -50,7 +50,7 @@ def should_update_cookie(new_value, old_value, expiry_dt, days_threshold=3):
             return True
     return False
 
-# 更新cookie到secrets
+# 更新 cookie 到 secrets
 def update_github_secret(secret_name, new_value):
     if not new_value:
         print(f"⚠️ 跳过更新 {secret_name}：新值为空")
@@ -75,7 +75,7 @@ def update_github_secret(secret_name, new_value):
         print(f"❌ 异常: {e}")
         return False
 
-# 发送tg通知
+# 发送 tg 通知
 def send_telegram_message(message: str):
     if not TG_BOT_TOKEN or not TG_CHAT_ID:
         print("⚠️ Telegram 未配置，跳过通知")
@@ -117,7 +117,7 @@ def format_notification(status: str, extra: str = "", error: str = "", expiry_da
     lines.append(f"⏱️ 登录时间: {now}")
     return "\n".join(lines)
 
-# 等待Turnstile验证通过
+# 等待 Turnstile 验证通过
 def wait_for_turnstile_pass(sb, timeout=30):
     start = time.time()
     cf_indicators = ["verify you are human", "确认您是真人", "troubleshoot", "just a moment"]
@@ -131,7 +131,7 @@ def wait_for_turnstile_pass(sb, timeout=30):
     print("❌ Turnstile 验证超时未通过")
     return False
     
-# 获取当前出口ip
+# 获取当前出口 ip
 def get_current_ip(proxy_server: str = "") -> str:
     proxies = None
     if proxy_server:
@@ -167,9 +167,9 @@ def extract_expiry_date(page_source: str) -> str:
         if match:
             date_str = match.group(1)
             # 如果是 MM/DD/YYYY 格式，转换为 YYYY/MM/DD
-            if len(date_str.split('/')[-1]) == 4:  # 年份长度4
+            if len(date_str.split('/')[-1]) == 4:  # 年份长度 4
                 parts = date_str.split('/')
-                if len(parts[0]) == 2:  # 第一部分是2位（月）
+                if len(parts[0]) == 2:  # 第一部分是 2 位（月）
                     # 修正：将 MM/DD/YYYY 转为 YYYY/MM/DD
                     return f"{parts[2]}/{parts[0]}/{parts[1]}"
             return date_str
@@ -354,16 +354,25 @@ def main():
 
     global _LOGIN_METHOD
 
+    # 检查 SESSION_TOKEN 是否有效
+    if SESSION_TOKEN:
+        print(f"🔍 检查 SESSION_TOKEN: 长度={len(SESSION_TOKEN)}, 前 8 位={SESSION_TOKEN[:8] if len(SESSION_TOKEN) >= 8 else SESSION_TOKEN}...")
+        if len(SESSION_TOKEN) < 10:
+            print("❌ SESSION_TOKEN 长度不足 10 位，可能为空或无效")
+            SESSION_TOKEN = ""
+    else:
+        print("⚠️ SESSION_TOKEN 未配置")
+
     with SB(**sb_kwargs) as sb:
         try:
             ip = get_current_ip(PROXY_SERVER if IS_PROXY else "")
-            print(f"📍 当前出口IP: {ip}")
+            print(f"📍 当前出口 IP: {ip}")
         except Exception as e:
             print(f"⚠️ 获取出口 IP 失败: {e}")
 
         login_ok = False
 
-        # 方式1: SESSION_TOKEN Cookie 登录（默认）
+        # 方式 1: SESSION_TOKEN Cookie 登录（默认）
         if SESSION_TOKEN:
             print("🚀 启动浏览器...")
             # 先导航到目标域名，这是设置 cookie 的必要前提
@@ -376,22 +385,29 @@ def main():
             print(f"📝 当前页面 URL: {current_url}")
 
             print("📝 注入 Cookie...")
-            # 使用 JavaScript 直接注入 cookie，绕过 Selenium 的限制
+            # 先设置其他 cookie
             try:
-                # 先设置其他 cookie
                 sb.add_cookie({"name": "login", "value": "true", "domain": "bot-hosting.net", "path": "/"})
                 print("✅ Cookie 'login' 注入成功")
                 
                 sb.add_cookie({"name": "theme", "value": "system", "domain": "bot-hosting.net", "path": "/"})
                 print("✅ Cookie 'theme' 注入成功")
                 
-                # 使用 JavaScript 注入 session_token
+                # 使用 JavaScript 注入 session_token（使用 encodeURIComponent 处理特殊字符）
+                escaped_token = SESSION_TOKEN.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r')
                 js_code = f"""
-                document.cookie = "session_token={SESSION_TOKEN}; domain=bot-hosting.net; path=/; SameSite=Lax";
+                (function() {{
+                    document.cookie = "session_token={escaped_token}; domain=bot-hosting.net; path=/; SameSite=Lax";
+                    return document.cookie;
+                }})()
                 """
-                sb.execute_script(js_code)
+                result = sb.execute_script(js_code)
                 sb.sleep(1)
-                print("✅ Cookie 'session_token' 通过 JavaScript 注入成功")
+                
+                if "session_token=" in result:
+                    print("✅ Cookie 'session_token' 通过 JavaScript 注入成功")
+                else:
+                    print(f"⚠️ Cookie 'session_token' 注入结果: {result[:100]}")
                 
                 # 刷新页面以应用 cookie
                 sb.open("https://bot-hosting.net/a/billings")
@@ -404,15 +420,15 @@ def main():
 
             current_url = sb.get_current_url()
             current_title = sb.get_title()
-            print(f"📝 当前URL: {current_url}, Title: {current_title}")
+            print(f"📝 当前 URL: {current_url}, Title: {current_title}")
 
             if "/a/billings" in current_url and "/login" not in current_url and "error=" not in current_url:
                 login_ok = True
-                print("✅ SESSION_TOKEN 登录成功, 当前已到达账单页")
+                print("✅ SESSION_TOKEN 登录成功，当前已到达账单页")
             else:
-                print(f"❌ SESSION_TOKEN 登录失败，当前URL: {current_url}, 当前标题: {current_title}")
+                print(f"❌ SESSION_TOKEN 登录失败，当前 URL: {current_url}, 当前标题: {current_title}")
 
-        # 方式2: Discord OAuth 登录（备用）
+        # 方式 2: Discord OAuth 登录（备用）
         if not login_ok and DC_TOKEN:
             _LOGIN_METHOD = "Discord Token"
             print("\n🔄 SESSION_TOKEN 登录失败或未配置，尝试 Discord OAuth 登录...")
@@ -423,13 +439,13 @@ def main():
                 sb.sleep(3)
                 current_url = sb.get_current_url()
                 current_title = sb.get_title()
-                print(f"📝 当前URL: {current_url}, Title: {current_title}")
+                print(f"📝 当前 URL: {current_url}, Title: {current_title}")
 
                 if "a/billings" in current_url:
                     login_ok = True
-                    print("✅ Discord OAuth 登录成功,当前已到达账单页")
+                    print("✅ Discord OAuth 登录成功，当前已到达账单页")
                 else:
-                    print(f"❌ Discord OAuth 登录后仍未到达账单页，当前URL: {current_url}")
+                    print(f"❌ Discord OAuth 登录后仍未到达账单页，当前 URL: {current_url}")
             else:
                 print("❌ Discord OAuth 登录失败")
 
@@ -541,7 +557,7 @@ def main():
                 send_telegram_message(
                     format_notification(
                         "✅ 续期成功",
-                        extra=f"⏱️ 可续期时间: {format_countdown(new_countdown)}后",
+                        extra=f"⏱️ 可续期时间: {format_countdown(new_countdown)} 后",
                         expiry_date=new_expiry or "（未获取到）"
                     )
                 )
@@ -572,7 +588,7 @@ def main():
                 send_telegram_message(
                     format_notification(
                         "⏳ 未到续期时间",
-                        extra=f"⏱️ 可续期时间: {friendly}后",
+                        extra=f"⏱️ 可续期时间: {friendly} 后",
                         expiry_date=current_expiry or "（未获取到）"
                     )
                 )
@@ -586,7 +602,7 @@ def main():
                     )
                 )
 
-        # 更新SESSION_TOKEN 
+        # 更新 SESSION_TOKEN 
         print("🔄 检查 SESSION_TOKEN 是否需要更新")
         new_token, token_expiry = get_cookie_info(sb, "session_token")
         old_token = SESSION_TOKEN
