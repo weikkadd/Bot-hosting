@@ -380,7 +380,10 @@ def main():
             print("📝 注入 Cookie...")
             for name, value in COOKIES.items():
                 if value:
-                    sb.add_cookie({"name": name, "value": value, "domain": "bot-hosting.net"})
+                    try:
+                        sb.add_cookie({"name": name, "value": value, "domain": "bot-hosting.net", "path": "/"})
+                    except Exception as e:
+                        print(f"⚠️ 注入 Cookie '{name}' 失败: {e}")
 
             print("🌐 访问 https://bot-hosting.net/a/billings ...")
             sb.open("https://bot-hosting.net/a/billings")
