@@ -2,7 +2,12 @@ name: Auto Renew Bot-hosting
 
 on:
   schedule:
-    - cron: '0 1 * * *' # 每天UTC 1点 (北京时间9点, 一般都会推迟),自行根据服务到期时间调整
+    # bot-hosting 续期冷却约 24h，每天跑 2 次兜底（GitHub cron 常延迟 30min~2h）
+    # 第一次：UTC 2:00 (北京时间 10:00) — 距上次约 25h，能赶上续期窗口
+    # 第二次：UTC 14:00 (北京时间 22:00) — 兜底，若上午失败或延迟过久，晚上补一次
+    # 若距上次续期不足 24h，脚本会自动识别 "Renew in xx:xx:xx" 倒计时并跳过，安全无副作用
+    - cron: '0 2 * * *'
+    - cron: '0 14 * * *'
   workflow_dispatch:
 
 jobs:
