@@ -24,13 +24,6 @@ if not SESSION_TOKEN and not DC_TOKEN:
     print("ℹ️ 未配置 SESSION_TOKEN 和 DISCORD_TOKEN,脚本终止。")
     sys.exit(1)
 
-# 构造cookie
-COOKIES = {
-    "session_token": SESSION_TOKEN,
-    "login": "true",
-    "theme": "system",
-}
-
 # 记录本次登录方式（用于通知）
 _LOGIN_METHOD = "SESSION_TOKEN"
 
@@ -383,18 +376,32 @@ def main():
             print(f"📝 当前页面 URL: {current_url}")
 
             print("📝 注入 Cookie...")
-            for name, value in COOKIES.items():
-                if value:
-                    try:
-                        sb.add_cookie({"name": name, "value": value, "domain": "bot-hosting.net", "path": "/"})
-                        print(f"✅ Cookie '{name}' 注入成功")
-                    except Exception as e:
-                        print(f"⚠️ 注入 Cookie '{name}' 失败: {e}")
+            # 使用 JavaScript 直接注入 cookie，绕过 Selenium 的限制
+            try:
+                # 先设置其他 cookie
+                sb.add_cookie({"name": "login", "value": "true", "domain": "bot-hosting.net", "path": "/"})
+                print("✅ Cookie 'login' 注入成功")
+                
+                sb.add_cookie({"name": "theme", "value": "system", "domain": "bot-hosting.net", "path": "/"})
+                print("✅ Cookie 'theme' 注入成功")
+                
+                # 使用 JavaScript 注入 session_token
+                js_code = f"""
+                document.cookie = "session_token={SESSION_TOKEN}; domain=bot-hosting.net; path=/; SameSite=Lax";
+                """
+                sb.execute_script(js_code)
+                sb.sleep(1)
+                print("✅ Cookie 'session_token' 通过 JavaScript 注入成功")
+                
+                # 刷新页面以应用 cookie
+                sb.open("https://bot-hosting.net/a/billings")
+                sb.wait_for_ready_state_complete()
+                sb.sleep(3)
+                
+            except Exception as e:
+                print(f"❌ Cookie 注入失败: {e}")
+                sb.save_screenshot("cookie_injection_failed.png")
 
-            print("🌐 访问 https://bot-hosting.net/a/billings ...")
-            sb.open("https://bot-hosting.net/a/billings")
-            sb.wait_for_ready_state_complete()
-            sb.sleep(3)
             current_url = sb.get_current_url()
             current_title = sb.get_title()
             print(f"📝 当前URL: {current_url}, Title: {current_title}")
