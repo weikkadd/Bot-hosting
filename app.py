@@ -24,13 +24,6 @@ if not SESSION_TOKEN and not DC_TOKEN:
     print("ℹ️ 未配置 SESSION_TOKEN 和 DISCORD_TOKEN,脚本终止。")
     sys.exit(1)
 
-# 构造cookie
-COOKIES = {
-    "session_token": SESSION_TOKEN,
-    "login": "true",
-    "theme": "system",
-}
-
 # 记录本次登录方式（用于通知）
 _LOGIN_METHOD = "SESSION_TOKEN"
 
@@ -373,15 +366,21 @@ def main():
         # 方式1: SESSION_TOKEN Cookie 登录（默认）
         if SESSION_TOKEN:
             print("🚀 启动浏览器...")
+            # 先导航到目标域名，这是设置 cookie 的必要前提
             sb.open("https://bot-hosting.net/")
             sb.wait_for_ready_state_complete()
             sb.sleep(2)
+            
+            # 打印当前 URL 确认导航成功
+            current_url = sb.get_current_url()
+            print(f"📝 当前页面 URL: {current_url}")
 
             print("📝 注入 Cookie...")
             for name, value in COOKIES.items():
                 if value:
                     try:
                         sb.add_cookie({"name": name, "value": value, "domain": "bot-hosting.net", "path": "/"})
+                        print(f"✅ Cookie '{name}' 注入成功")
                     except Exception as e:
                         print(f"⚠️ 注入 Cookie '{name}' 失败: {e}")
 
