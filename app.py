@@ -24,6 +24,13 @@ if not SESSION_TOKEN and not DC_TOKEN:
     print("ℹ️ 未配置 SESSION_TOKEN 和 DISCORD_TOKEN,脚本终止。")
     sys.exit(1)
 
+# 构造cookie
+COOKIES = {
+    "session_token": SESSION_TOKEN,
+    "login": "true",
+    "theme": "system",
+}
+
 # 记录本次登录方式（用于通知）
 _LOGIN_METHOD = "SESSION_TOKEN"
 
