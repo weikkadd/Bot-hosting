@@ -354,6 +354,12 @@ def main():
 
     global _LOGIN_METHOD
 
+    # 修复：在函数内声明全局变量，避免 UnboundLocalError
+    global SESSION_TOKEN
+    SESSION_TOKEN = os.environ.get("SESSION_TOKEN") or ""
+    global DC_TOKEN
+    DC_TOKEN = os.environ.get("DISCORD_TOKEN", "").split(",", 1)[-1].strip() if os.environ.get("DISCORD_TOKEN") else ""
+
     # 检查 SESSION_TOKEN 是否有效
     if SESSION_TOKEN:
         print(f"🔍 检查 SESSION_TOKEN: 长度={len(SESSION_TOKEN)}, 前 8 位={SESSION_TOKEN[:8] if len(SESSION_TOKEN) >= 8 else SESSION_TOKEN}...")
