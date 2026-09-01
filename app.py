@@ -159,18 +159,23 @@ def extract_expiry_date(page_source: str) -> str:
     patterns = [
         r"[Ee]xpires\s*[:\-]?\s*(\d{4}/\d{2}/\d{2})",
         r"[Ee]xpires\s*[:\-]?\s*(\d{2}/\d{2}/\d{4})",
+        r"[Ee]xpires\s*[:\-]?\s*(\d{4}-\d{2}-\d{2})",
+        r"[Ee]xpires\s*[:\-]?\s*(\d{2}-\d{2}-\d{4})",
         r"(\d{4}/\d{2}/\d{2})\s*[\-–]\s*renew",
         r"(\d{2}/\d{2}/\d{4})\s*[\-–]\s*renew",
+        r"(\d{4}-\d{2}-\d{2})\s*[\-–]\s*renew",
+        r"(\d{2}-\d{2}-\d{4})\s*[\-–]\s*renew",
         r"(\d{4}/\d{2}/\d{2})\s*[\-–]\s*renew manually to extend for 4 days",
     ]
     for pattern in patterns:
         match = re.search(pattern, page_source)
         if match:
             date_str = match.group(1)
-            if len(date_str.split('/')[-1]) == 4:
-                parts = date_str.split('/')
-                if len(parts[0]) == 2:
-                    return f"{parts[2]}/{parts[0]}/{parts[1]}"
+            # 把 dd/mm/yyyy 统一成 yyyy/mm/dd; dd-mm-yyyy -> yyyy-mm-dd
+            sep = '-' if '-' in date_str else '/'
+            parts = date_str.split(sep)
+            if len(parts[-1]) == 4 and len(parts[0]) == 2:
+                return f"{parts[2]}{sep}{parts[0]}{sep}{parts[1]}"
             return date_str
     return None
 
@@ -513,27 +518,69 @@ def main():
             except Exception as e:
                 print(f"续期按钮点击失败: {e}")
 
-            print("⏳ 等待新的过期时间...")
-            sb.sleep(6)
+            # 部分流程点完 "Renew for 4 days" 后还会弹二次确认框, 补点一次
+            for confirm_sel in (
+                'button:contains("Confirm")',
+                'button:contains("Yes")',
+                'button:contains("确认")',
+            ):
+                try:
+                    if sb.is_element_visible(confirm_sel):
+                        sb.click(confirm_sel, timeout=5)
+                        print(f"✅ 已点击确认按钮: {confirm_sel}")
+                        time.sleep(2)
+                        break
+                except Exception:
+                    pass
 
-            # 提取新的到期日期和倒计时
-            new_page_text = sb.get_page_source()
-            new_expiry = extract_expiry_date(new_page_text)
-            new_match = re.search(r"Renew in (\d{2}:\d{2}:\d{2})", new_page_text)
-            if new_match:
-                new_countdown = new_match.group(1)
-                print(f"✅ 续期成功！新的倒计时: {new_countdown}")
-                if new_expiry:
-                    print(f"📅 新的到期日期: {new_expiry}")
-                send_telegram_message(
-                    format_notification(
-                        "✅ 续期成功",
-                        extra=f"⏱️ 可续期时间: {format_countdown(new_countdown)} 后",
-                        expiry_date=new_expiry or "（未获取到）"
-                    )
-                )
-            else:
+            print("⏳ 等待新的过期时间...")
+            sb.sleep(8)
+
+            # 多信号验证: 倒计时 / 到期日期变化 / 成功文案
+            # 未检测到变化时重新打开账单页再查 (续期可能已生效但当前 DOM 未刷新)
+            renew_success = False
+            new_expiry = None
+            new_countdown = None
+            for attempt in range(1, 4):
+                page_text = sb.get_page_source()
+                new_expiry = extract_expiry_date(page_text)
+                cd = re.search(r"Renew in (\d{2}:\d{2}:\d{2})", page_text)
+                ok_text = re.search(
+                    r"(renewed successfully|successfully renewed|renew success|已续期|续期成功)",
+                    page_text, re.I)
+                if cd:
+                    renew_success = True
+                    new_countdown = cd.group(1)
+                    break
                 if new_expiry and new_expiry != current_expiry:
+                    renew_success = True
+                    break
+                if ok_text:
+                    renew_success = True
+                    break
+                if attempt < 3:
+                    print(f"⏳ 第 {attempt} 次未检测到变化, 刷新账单页重试...")
+                    try:
+                        sb.open("https://bot-hosting.net/a/billings")
+                        sb.wait_for_ready_state_complete()
+                        sb.sleep(6)
+                    except Exception as e:
+                        print(f"⚠️ 刷新账单页失败: {e}")
+                        break
+
+            if renew_success:
+                if new_countdown:
+                    print(f"✅ 续期成功！新的倒计时: {new_countdown}")
+                    if new_expiry:
+                        print(f"📅 新的到期日期: {new_expiry}")
+                    send_telegram_message(
+                        format_notification(
+                            "✅ 续期成功",
+                            extra=f"⏱️ 可续期时间: {format_countdown(new_countdown)} 后",
+                            expiry_date=new_expiry or "（未获取到）"
+                        )
+                    )
+                else:
                     print(f"✅ 续期成功，到期日期已更新为: {new_expiry}")
                     send_telegram_message(
                         format_notification(
@@ -542,15 +589,15 @@ def main():
                             expiry_date=new_expiry
                         )
                     )
-                else:
-                    print("⚠️ 续期结果未知，到期日期未变化，请手动检查")
-                    send_telegram_message(
-                        format_notification(
-                            "⚠️ 续期可能未成功",
-                            extra="请登录后台检查",
-                            expiry_date=current_expiry or "（未获取到）"
-                        )
+            else:
+                print("⚠️ 续期结果未知，到期日期未变化，请手动检查")
+                send_telegram_message(
+                    format_notification(
+                        "⚠️ 续期可能未成功",
+                        extra="请登录后台检查",
+                        expiry_date=current_expiry or "（未获取到）"
                     )
+                )
 
         else:
             if countdown_text:
