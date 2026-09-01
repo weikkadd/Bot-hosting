@@ -448,14 +448,33 @@ def main():
                     return document.cookie;
                 }})()
                 """
-                result = sb.execute_script(js_code)
+                try:
+                    sb.execute_script(js_code)
+                except Exception as e:
+                    print(f"⚠️ JS 注入 session_token 异常: {e}")
                 sb.sleep(1)
-                
-                # 安全地检查结果
-                if result is not None and "session_token=" in str(result):
-                    print("✅ Cookie 'session_token' 通过 JavaScript 注入成功")
+
+                # 校验 cookie 是否真的写入 (JS 注入的返回值有时拿不到, 直接查 cookie)
+                def _has_session_cookie():
+                    try:
+                        ck = sb.get_cookie("session_token")
+                        return bool(ck and ck.get("value"))
+                    except Exception:
+                        return False
+
+                if _has_session_cookie():
+                    print("✅ Cookie 'session_token' 注入成功")
                 else:
-                    print(f"⚠️ Cookie 'session_token' 注入结果: {str(result)[:100] if result else 'None'}")
+                    print("⚠️ JS 注入 session_token 未生效, 尝试 add_cookie 回退...")
+                    try:
+                        sb.add_cookie({"name": "session_token", "value": SESSION_TOKEN,
+                                       "domain": "bot-hosting.net", "path": "/", "sameSite": "Lax"})
+                        if _has_session_cookie():
+                            print("✅ Cookie 'session_token' 通过 add_cookie 注入成功")
+                        else:
+                            print("⚠️ add_cookie 回退也未生效, 请检查 SESSION_TOKEN 是否过期")
+                    except Exception as e:
+                        print(f"⚠️ add_cookie 回退失败: {e}")
                 
                 # 刷新页面以应用 cookie
                 sb.open("https://bot-hosting.net/a/billings")
