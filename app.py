@@ -184,13 +184,15 @@ def inspect_renew_buttons(sb):
     """枚举页面上所有含 'Renew' 的按钮及其可见/禁用状态"""
     try:
         info = sb.execute_script("""
-            return Array.from(document.querySelectorAll('button'))
-                .map(b => ({
-                    text: (b.innerText || b.textContent || '').trim().slice(0, 60),
-                    visible: b.offsetParent !== null,
-                    disabled: !!b.disabled,
-                }))
-                .filter(x => /renew/i.test(x.text));
+            (function(){
+                return Array.from(document.querySelectorAll('button'))
+                    .map(b => ({
+                        text: (b.innerText || b.textContent || '').trim().slice(0, 60),
+                        visible: b.offsetParent !== null,
+                        disabled: !!b.disabled,
+                    }))
+                    .filter(x => /renew/i.test(x.text));
+            })()
         """)
         if not info:
             print("🔍 页面上没有含 'Renew' 的按钮")
@@ -554,23 +556,30 @@ def main():
                 # 优先用 JS 精确点击"可见且未禁用"的 "Renew for X days" 按钮,
                 # 避免 :contains() 误匹配到隐藏模板按钮
                 js = sb.execute_script("""
-                    const bs = Array.from(document.querySelectorAll('button'))
-                        .filter(b => b.offsetParent !== null && !b.disabled &&
-                            /renew for \\d+ days/i.test((b.innerText||b.textContent||'').trim()));
-                    if (!bs.length) return {ok:false, n:0};
-                    bs[0].click();
-                    return {ok:true, n:bs.length, text:(bs[0].innerText||'').trim()};
+                    (function(){
+                        const bs = Array.from(document.querySelectorAll('button'))
+                            .filter(b => b.offsetParent !== null && !b.disabled &&
+                                /renew for \\d+ days/i.test((b.innerText||b.textContent||'').trim()));
+                        if (!bs.length) return {ok:false, n:0};
+                        bs[0].click();
+                        return {ok:true, n:bs.length, text:(bs[0].innerText||'').trim()};
+                    })()
                 """)
                 if js.get("ok"):
                     modal_button_clicked = True
                     print(f"✅ 已点击续期按钮: '{js.get('text')}' (可见可用匹配 {js.get('n')} 个)")
                 else:
-                    # 回退: 原 CSS 选择器
+                    print(f"ℹ️ JS 未找到可见可用的续期按钮, 尝试 CSS 回退")
+            except Exception as e:
+                print(f"⚠️ JS 点击异常: {e}")
+            if not modal_button_clicked:
+                # 回退: 原 CSS 选择器
+                try:
                     sb.click('button:contains("Renew for 4 days")', timeout=8)
                     modal_button_clicked = True
                     print("✅ 已点击续期按钮 (CSS 选择器回退)")
-            except Exception as e:
-                print(f"续期按钮点击失败: {e}")
+                except Exception as e:
+                    print(f"续期按钮点击失败: {e}")
 
             time.sleep(2)
             print("🔍 点击后按钮结构 (诊断):")
