@@ -375,6 +375,11 @@ def do_discord_login(sb) -> bool:
             return True
         time.sleep(0.5)
     print(f"❌ 登录超时或未跳转成功，最终停留在：{url}")
+    try:
+        body_text = sb.get_text("body")[:300]
+        print(f"   📝 回调页面内容: {body_text}")
+    except Exception:
+        pass
     sb.save_screenshot("login_timeout.png")
     return False
 
@@ -431,6 +436,14 @@ def main():
             sb.sleep(2)
             current_url = sb.get_current_url()
             print(f"📝 当前页面 URL: {current_url}")
+
+            # 诊断: 打印当前站点已有 cookie 名 (判断 session cookie 的真实名字)
+            try:
+                cookies = sb.get_cookies()
+                names = [c.get("name") for c in cookies]
+                print(f"📝 当前站点 cookie 名: {names}")
+            except Exception as e:
+                print(f"⚠️ 读取 cookie 名失败: {e}")
 
             print("📝 注入 Cookie...")
             try:
