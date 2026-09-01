@@ -410,6 +410,20 @@ def main():
     global DC_TOKEN
     DC_TOKEN = os.environ.get("DISCORD_TOKEN", "").split(",", 1)[-1].strip() if os.environ.get("DISCORD_TOKEN") else ""
 
+    # 防呆: 若把整段 cookie 字符串 (如 "XSRF-TOKEN=...; __Host-aclclouds_session=...") 贴进
+    # SESSION_TOKEN, 自动提取 session_token 纯值并警告
+    if SESSION_TOKEN and (";" in SESSION_TOKEN or SESSION_TOKEN.startswith("session_token=")):
+        print("⚠️ 检测到 SESSION_TOKEN 含 ';' 或带了 'session_token=' 前缀")
+        print("   bot-hosting 的 SESSION_TOKEN 只填 session_token 的纯值 (eyJhbGci 开头),")
+        print("   不要贴 XSRF-TOKEN=... 之类的整段 cookie 字符串")
+        m = re.search(r"(?:^|;\s*)session_token=([^;]+)", SESSION_TOKEN)
+        if m:
+            SESSION_TOKEN = m.group(1).strip()
+            print(f"   ✅ 已自动提取 session_token 纯值 (长度={len(SESSION_TOKEN)}, 前 8 位={SESSION_TOKEN[:8]}...)")
+        else:
+            SESSION_TOKEN = ""
+            print("   ❌ 未找到 session_token= 字段, 本次按未配置处理")
+
     # 检查 SESSION_TOKEN 是否有效
     if SESSION_TOKEN:
         print(f"🔍 检查 SESSION_TOKEN: 长度={len(SESSION_TOKEN)}, 前 8 位={SESSION_TOKEN[:8]}...")
