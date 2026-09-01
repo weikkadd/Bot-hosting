@@ -559,21 +559,30 @@ def main():
             # 处理弹窗中的 Turnstile
             print("🔒 检测弹窗中的 Turnstile 验证...")
             turnstile_passed = False
-            for attempt in range(1, 4):
+            for attempt in range(1, 5):
                 try:
-                    sb.uc_gui_click_captcha()
-                    time.sleep(12)
+                    clicked = sb.uc_gui_click_captcha()
+                    print(f"   第 {attempt} 次点击验证框: {'已点击' if clicked else '未找到/无需点击'}")
                 except Exception as e:
                     print(f"⚠️ 点击 Turnstile 出错: {e}")
-                if wait_for_turnstile_pass(sb, timeout=20):
+                # 真正通过的信号: 弹窗里续期按钮从禁用变为可用 (Turnstile 响应 token 已生成)
+                # 旧版只靠页面文字判断, 校验其实没完成, 按钮一直禁用
+                ok, _, _ = wait_for_renew_button(sb, timeout=30)
+                if ok:
                     turnstile_passed = True
+                    print("✅ Turnstile 验证已通过 (续期按钮已启用)")
                     break
-                else:
-                    print(f"⏳ 第 {attempt} 次未通过，重试点击...")
+                print(f"⏳ 第 {attempt} 次尝试后续期按钮仍未启用, 重新点击验证框...")
+                sb.sleep(3)
 
             if not turnstile_passed:
-                print("❌ Turnstile 验证最终未通过，脚本退出")
-                send_telegram_message(format_notification("❌ 续期失败", error="Turnstile 验证未通过"))
+                print("❌ Turnstile 验证最终未通过 (续期按钮始终禁用)")
+                print("   最常见原因: 出口 IP 被 Cloudflare 风控, 机房/数据中心 IP 很难过 Turnstile")
+                print("   → 建议换更干净的住宅/原生代理后重试 (当前出口 IP 见上方日志)")
+                save_screenshot(sb, "turnstile_failed")
+                send_telegram_message(
+                    format_notification("❌ 续期失败", error="Turnstile 验证未通过 (IP 可能被 CF 风控, 建议换干净代理)")
+                )
                 return
 
             # 点击续期按钮
