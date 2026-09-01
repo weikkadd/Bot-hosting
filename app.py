@@ -499,7 +499,7 @@ def main():
                         if _has_session_cookie():
                             print("✅ Cookie 'session_token' 通过 add_cookie 注入成功")
                         else:
-                            print("⚠️ add_cookie 回退也未生效, 请检查 SESSION_TOKEN 是否过期")
+                            print("ℹ️ Cookie 注入校验未通过 (get_cookie 检测不到), 以实际登录结果为准")
                     except Exception as e:
                         print(f"⚠️ add_cookie 回退失败: {e}")
                 
