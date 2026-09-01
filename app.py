@@ -217,6 +217,37 @@ def save_screenshot(sb, name):
         return None
 
 
+def wait_for_renew_button(sb, timeout=45):
+    """轮询等待"可见且未禁用"的 'Renew for X days' 按钮出现
+
+    关键: Turnstile 校验真正完成后该按钮才会从禁用变为可用,
+    wait_for_turnstile_pass 只靠页面文字判断太宽松, 按钮状态才是实锤。
+    返回 (ok, text, n)。
+    """
+    deadline = time.time() + timeout
+    reported = False
+    while time.time() < deadline:
+        try:
+            r = sb.execute_script("""
+                (function(){
+                    const bs = Array.from(document.querySelectorAll('button'))
+                        .filter(b => b.offsetParent !== null && !b.disabled &&
+                            /renew for \\d+ days/i.test((b.innerText||b.textContent||'').trim()));
+                    if (!bs.length) return {ok:false};
+                    return {ok:true, text:(bs[0].innerText||'').trim(), n:bs.length};
+                })()
+            """)
+            if r and r.get("ok"):
+                return True, r.get("text"), r.get("n")
+        except Exception:
+            pass
+        if not reported:
+            print("⏳ 续期按钮仍处于禁用状态, 等待 Turnstile 校验完成...")
+            reported = True
+        sb.sleep(2)
+    return False, None, None
+
+
 #   Discord OAuth 登录
 DISCORD_CLIENT_ID   = "884382422530158623"
 OAUTH_REDIRECT_URI  = "https://bot-hosting.net/login"
@@ -547,31 +578,42 @@ def main():
 
             # 点击续期按钮
             print("⏳ 等待续期按钮可用并点击...")
-            time.sleep(5)
+            time.sleep(3)
             print("🔍 弹窗内按钮结构 (诊断):")
             inspect_renew_buttons(sb)
             save_screenshot(sb, "before_click_renew")
+
+            # 关键: Turnstile 校验未真正完成时按钮是禁用状态, 必须等它启用再点
+            btn_ok, btn_text, btn_n = wait_for_renew_button(sb, timeout=45)
+            if not btn_ok:
+                print("⚠️ 等待 45s 续期按钮仍未启用")
+                print("   可能原因: Turnstile 未真正通过 / 免费续期冷却中 / 信用不足")
+                inspect_renew_buttons(sb)
+                save_screenshot(sb, "button_still_disabled")
+            else:
+                print(f"✅ 续期按钮已启用: '{btn_text}' (匹配 {btn_n} 个)")
+
             modal_button_clicked = False
-            try:
-                # 优先用 JS 精确点击"可见且未禁用"的 "Renew for X days" 按钮,
-                # 避免 :contains() 误匹配到隐藏模板按钮
-                js = sb.execute_script("""
-                    (function(){
-                        const bs = Array.from(document.querySelectorAll('button'))
-                            .filter(b => b.offsetParent !== null && !b.disabled &&
-                                /renew for \\d+ days/i.test((b.innerText||b.textContent||'').trim()));
-                        if (!bs.length) return {ok:false, n:0};
-                        bs[0].click();
-                        return {ok:true, n:bs.length, text:(bs[0].innerText||'').trim()};
-                    })()
-                """)
-                if js.get("ok"):
-                    modal_button_clicked = True
-                    print(f"✅ 已点击续期按钮: '{js.get('text')}' (可见可用匹配 {js.get('n')} 个)")
-                else:
-                    print(f"ℹ️ JS 未找到可见可用的续期按钮, 尝试 CSS 回退")
-            except Exception as e:
-                print(f"⚠️ JS 点击异常: {e}")
+            if btn_ok:
+                try:
+                    # 用 JS 精确点击"可见且未禁用"的 "Renew for X days" 按钮
+                    js = sb.execute_script("""
+                        (function(){
+                            const bs = Array.from(document.querySelectorAll('button'))
+                                .filter(b => b.offsetParent !== null && !b.disabled &&
+                                    /renew for \\d+ days/i.test((b.innerText||b.textContent||'').trim()));
+                            if (!bs.length) return {ok:false, n:0};
+                            bs[0].click();
+                            return {ok:true, n:bs.length, text:(bs[0].innerText||'').trim()};
+                        })()
+                    """)
+                    if js.get("ok"):
+                        modal_button_clicked = True
+                        print(f"✅ 已点击续期按钮: '{js.get('text')}' (可见可用匹配 {js.get('n')} 个)")
+                    else:
+                        print(f"ℹ️ JS 未找到可见可用的续期按钮, 尝试 CSS 回退")
+                except Exception as e:
+                    print(f"⚠️ JS 点击异常: {e}")
             if not modal_button_clicked:
                 # 回退: 原 CSS 选择器
                 try:
