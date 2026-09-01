@@ -11,7 +11,7 @@
 | Secret 名称         | 是否必填 | 说明                                              |
 |---------------------|----------|---------------------------------------------------|
 | EMAIL              | ❌ 可选  | 用于通知使用的Email,可随意填写                          |
-| SESSION_TOKEN      | ❌ 可选  | Bot-hosting session_token，cookie里获取               |
+| SESSION_TOKEN      | ❌ 可选  | Bot-hosting session_token，cookie里获取 示例   XSRF-TOKEN=eyJpdiI6...(值A)__Host-aclclouds_session=eyJpdiI6...(值B)           |
 | DISCORD_TOKEN      | ✅ 必填  | Discord Token，SESSION_TOKEN失效时自动OAuth登录        |
 | GH_TOKEN           | ❌ 可选  | GitHub(classic) token,用于自动更新session_token,以ghp_xxx开头|
 | NODE_LINK          | ❌ 可选  | 代理链接（如 vless:// vmess:// trojan:// hysteria2:// tuic:// anytls:// socks5:// )|
